@@ -1,0 +1,32 @@
+{
+  "name": "nexvault-hardhat",
+  "version": "1.0.0",
+  "description": "Hardhat project for NexVault smart contract deployment and testing",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run --network localhost scripts/deploy.js",
+    "deploy:sepolia": "hardhat run --network sepolia scripts/deploy.js",
+    "clean": "hardhat clean"
+  },
+  "keywords": [
+    "hardhat",
+    "ethereum",
+    "solidity",
+    "smart-contracts",
+    "nexvault"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^2.0.0",
+    "hardhat": "^2.14.0",
+    "dotenv": "^16.3.1",
+    "chai": "^4.3.7",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "ethers": "^5.7.2"
+  }
+}
+
