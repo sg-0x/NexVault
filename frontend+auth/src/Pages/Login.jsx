@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loginUser, registerUser, signInWithGoogle } from '../services/authService';
 
@@ -208,7 +208,7 @@ const Login = () => {
           transition={{ delay: 0.2, duration: 0.5 }}
           className="flex items-center justify-center mb-8 space-x-3"
         >
-          <Shield className="w-10 h-10" style={{ color: '#13ba82' }} />
+          <img src="/logo.png" alt="NexVault Logo" className="w-10 h-10" />
           <h1 className="text-4xl font-bold text-white">NexVault</h1>
         </motion.div>
 
