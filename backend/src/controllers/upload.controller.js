@@ -5,6 +5,7 @@ const logger = require('../utils/logger');
 const { generateKey, encryptBuffer, computeHash } = require('../utils/encryption');
 const { uploadToS3 } = require('../utils/s3');
 const { addFileRecord } = require('../utils/blockchain');
+const { getFirestore, isFirestoreAvailable } = require('../config/firebase');
 
 /**
  * Handle file upload, encryption, and S3 storage
@@ -62,6 +63,41 @@ const uploadFile = async (req, res, next) => {
     } catch (blockchainErr) {
       logger.warn('[WARN] Blockchain write failed:', blockchainErr.message);
       // Continue with response even if blockchain fails
+    }
+
+    // Step 7.5: Save file metadata to Firestore
+    let firestoreDocId = null;
+    if (isFirestoreAvailable()) {
+      try {
+        const db = getFirestore();
+        const uid = req.user ? req.user.uid : 'dev-user';
+        
+        const firestoreMetadata = {
+          uid: uid,
+          fileName: originalname,
+          s3Key: uniqueKey,
+          s3Url: s3Url,
+          mimeType: mimetype,
+          originalSizeMB: parseFloat((size / 1024 / 1024).toFixed(4)),
+          encryptedSizeMB: parseFloat((ciphertext.length / 1024 / 1024).toFixed(4)),
+          hash: fileHash,
+          txHash: txHash,
+          // Store encryption keys (in production, encrypt these or use user-specific encryption)
+          iv: iv.toString('base64'),
+          authTag: authTag.toString('base64'),
+          aesKey: aesKey.toString('base64'),
+          uploadedAt: new Date().toISOString(),
+        };
+
+        const docRef = await db.collection('files').add(firestoreMetadata);
+        firestoreDocId = docRef.id;
+        logger.success(`[SUCCESS] File metadata stored in Firestore. DocID: ${firestoreDocId}`);
+      } catch (firestoreErr) {
+        logger.warn('[WARN] Firestore write failed:', firestoreErr.message);
+        // Continue with response even if Firestore fails
+      }
+    } else {
+      logger.debug('[DEV MODE] Firestore not available - skipping persistence');
     }
 
     // Step 8: Prepare metadata response

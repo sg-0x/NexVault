@@ -1,6 +1,5 @@
 // src/App.jsx
 import React from "react";
-import "./App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import ScrollToTop from "./Components/ScrollToTop";
 import SmoothScroll from "./Components/SmoothScroll"; // ← add this

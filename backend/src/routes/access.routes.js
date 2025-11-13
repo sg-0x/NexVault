@@ -7,22 +7,22 @@ const {
   verifyFileAccess,
   listAccessibleFiles,
 } = require('../controllers/access.controller');
-// const { authenticate } = require('../middleware/auth');
-// const { validateAccessRequest } = require('../middleware/validate');
+const { authenticate, optionalAuth } = require('../middleware/auth');
 
 // POST /api/access/grant - Grant access to a file
-// TODO: Add authentication and validation middleware
-// router.post('/grant', authenticate, validateAccessRequest, grantFileAccess);
-router.post('/grant', grantFileAccess);
+// Protected by authentication middleware
+router.post('/grant', authenticate, grantFileAccess);
 
 // POST /api/access/revoke - Revoke access to a file
-// router.post('/revoke', authenticate, validateAccessRequest, revokeFileAccess);
-router.post('/revoke', revokeFileAccess);
+// Protected by authentication middleware
+router.post('/revoke', authenticate, revokeFileAccess);
 
-// GET /api/access/verify/:fileId/:address - Verify access permissions
-router.get('/verify/:fileId/:address', verifyFileAccess);
+// GET /api/access/verify/:fileHash/:address - Verify access permissions
+// Public endpoint - no auth required
+router.get('/verify/:fileHash/:address', verifyFileAccess);
 
 // GET /api/access/files/:address - List all accessible files
-router.get('/files/:address', listAccessibleFiles);
+// Optional authentication
+router.get('/files/:address', optionalAuth, listAccessibleFiles);
 
 module.exports = router;

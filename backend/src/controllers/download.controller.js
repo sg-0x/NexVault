@@ -4,6 +4,8 @@
 const logger = require('../utils/logger');
 const { getFileFromS3, downloadFromS3 } = require('../utils/s3');
 const { decryptBuffer } = require('../utils/encryption');
+const { hasFileAccess } = require('../utils/blockchain');
+const { getFirestore, isFirestoreAvailable } = require('../config/firebase');
 
 /**
  * Generate a pre-signed URL for downloading encrypted file from S3
@@ -28,9 +30,54 @@ const downloadFile = async (req, res, next) => {
 
     logger.info(`Download URL requested for: ${key}`);
 
-    // TODO: In Part 4, verify user has access permission via blockchain
-    // const hasAccess = await verifyFileAccess(key, req.user.address);
-    // if (!hasAccess) return res.status(403).json({ error: 'Access denied' });
+    // Verify user has access permission via blockchain
+    try {
+      // Get file hash from Firestore
+      if (isFirestoreAvailable()) {
+        const db = getFirestore();
+        const fileSnapshot = await db.collection('files').where('s3Key', '==', key).limit(1).get();
+        
+        if (!fileSnapshot.empty) {
+          const fileData = fileSnapshot.docs[0].data();
+          const fileHash = fileData.hash;
+          const fileOwner = fileData.uid;
+          const currentUser = req.user ? req.user.uid : null;
+
+          // If user is the owner, allow access
+          if (currentUser && fileOwner === currentUser) {
+            logger.debug(`[DOWNLOAD] User ${currentUser} is owner of file ${key}`);
+          } else {
+            // Check blockchain access for user's wallet addresses
+            const userDoc = await db.collection('users').doc(currentUser).get();
+            const userData = userDoc.exists ? userDoc.data() : {};
+            const walletAddresses = userData.walletAddresses || [];
+
+            let hasAccess = false;
+            for (const address of walletAddresses) {
+              try {
+                if (await hasFileAccess(fileHash, address)) {
+                  hasAccess = true;
+                  break;
+                }
+              } catch (err) {
+                logger.warn(`[WARN] Failed to verify access for ${address}: ${err.message}`);
+              }
+            }
+
+            if (!hasAccess) {
+              logger.warn(`[DOWNLOAD] Access denied for user ${currentUser} to file ${key}`);
+              return res.status(403).json({
+                success: false,
+                error: 'Access denied. You do not have permission to download this file.'
+              });
+            }
+          }
+        }
+      }
+    } catch (accessError) {
+      logger.warn(`[WARN] Access verification failed for ${key}: ${accessError.message}`);
+      // Continue with download if verification fails (graceful degradation)
+    }
 
     // Generate a pre-signed URL valid for 5 minutes (300 seconds)
     // This allows the client to download the encrypted file directly from S3

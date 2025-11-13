@@ -226,21 +226,114 @@ async function revokeAccess(fileId, address) {
 }
 
 /**
+ * Check if an address has access to a file by fileHash
+ * @param {string} fileHash - File hash (bytes32 format or hex string)
+ * @param {string} address - Ethereum address to check
+ * @returns {Promise<boolean>} True if address has access
+ */
+async function hasFileAccess(fileHash, address) {
+  try {
+    const contract = getContract();
+    
+    if (!contract) {
+      throw new Error('Contract not initialized. Check blockchain configuration.');
+    }
+    
+    // Convert hex hash to bytes32 format if needed
+    const bytes32Hash = fileHash.startsWith('0x') ? fileHash : `0x${fileHash}`;
+    
+    logger.info(`[INFO] Checking access for ${address} on file ${fileHash.substring(0, 10)}...`);
+    
+    // Call hasAccess on smart contract (view function, no gas cost)
+    const hasAccess = await contract.hasAccess(bytes32Hash, address);
+    
+    logger.debug(`[DEBUG] Access check result: ${hasAccess} for ${address}`);
+    
+    return hasAccess;
+  } catch (error) {
+    logger.error(`[ERROR] hasFileAccess failed: ${error.message}`);
+    throw new Error(`Failed to check file access: ${error.message}`);
+  }
+}
+
+/**
+ * Get all file hashes accessible by an address
+ * Queries blockchain events to find all files where address has access
+ * @param {string} address - Ethereum address to check
+ * @returns {Promise<string[]>} Array of file hashes (without 0x prefix)
+ */
+async function getAccessibleFileHashes(address) {
+  try {
+    const contract = getContract();
+    
+    if (!contract) {
+      throw new Error('Contract not initialized. Check blockchain configuration.');
+    }
+    
+    logger.info(`[INFO] Querying accessible files for address: ${address}`);
+    
+    // Query AccessGranted events for this address
+    const filter = contract.filters.AccessGranted(null, address);
+    const events = await contract.queryFilter(filter);
+    
+    // Also check FileAdded events where address is the owner
+    const ownerFilter = contract.filters.FileAdded(null, address);
+    const ownerEvents = await contract.queryFilter(ownerFilter);
+    
+    const accessibleHashes = new Set();
+    
+    // Add files from AccessGranted events
+    events.forEach((event) => {
+      const fileHash = event.args.fileHash;
+      if (fileHash) {
+        // Remove 0x prefix and convert to lowercase for consistency
+        accessibleHashes.add(fileHash.toLowerCase());
+      }
+    });
+    
+    // Add files from FileAdded events (owner has automatic access)
+    ownerEvents.forEach((event) => {
+      const fileHash = event.args.fileHash;
+      if (fileHash) {
+        accessibleHashes.add(fileHash.toLowerCase());
+      }
+    });
+    
+    // Verify each file still has access (in case access was revoked)
+    // Use Promise.all for parallel verification instead of sequential
+    const verificationPromises = Array.from(accessibleHashes).map(async (hash) => {
+      try {
+        const hasAccess = await hasFileAccess(hash, address);
+        return hasAccess ? hash : null;
+      } catch (err) {
+        logger.warn(`[WARN] Failed to verify access for hash ${hash.substring(0, 10)}: ${err.message}`);
+        return null;
+      }
+    });
+    
+    const verificationResults = await Promise.all(verificationPromises);
+    const verifiedHashes = verificationResults.filter(hash => hash !== null);
+    
+    logger.success(`[SUCCESS] Found ${verifiedHashes.length} accessible files for ${address}`);
+    
+    return verifiedHashes;
+  } catch (error) {
+    logger.error(`[ERROR] getAccessibleFileHashes failed: ${error.message}`);
+    throw new Error(`Failed to get accessible file hashes: ${error.message}`);
+  }
+}
+
+/**
  * Check if an address has access to a file
- * @param {string} fileId - Unique file identifier
+ * @param {string} fileId - Unique file identifier (deprecated - use hasFileAccess with fileHash)
  * @param {string} address - Ethereum address to check
  * @returns {Promise<boolean>} True if address has access
  */
 async function checkAccess(fileId, address) {
   try {
-    // TODO: Implement smart contract interaction
-    // const contract = getContract();
-    // return await contract.hasAccess(fileId, address);
-
+    // This is a legacy function - try to use it as fileHash
     logger.info(`Access check for file ${fileId} by ${address}`);
-    
-    // Placeholder return
-    return true;
+    return await hasFileAccess(fileId, address);
   } catch (error) {
     logger.error(`Access check failed: ${error.message}`);
     throw new Error(`Failed to check access: ${error.message}`);
@@ -251,6 +344,8 @@ module.exports = {
   addFileRecord,
   grantFileAccess,
   revokeFileAccess,
+  hasFileAccess,
+  getAccessibleFileHashes,
   storeFileMetadata,
   verifyFileOwnership,
   grantAccess,

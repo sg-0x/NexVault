@@ -6,21 +6,20 @@ const {
   downloadAndDecrypt,
   getFileMetadata 
 } = require('../controllers/download.controller');
-// const { authenticate } = require('../middleware/auth');
+const { authenticate, optionalAuth } = require('../middleware/auth');
 
 // GET /api/download/:key - Get pre-signed download URL for encrypted file
 // Returns a temporary URL to download the encrypted file from S3
-// TODO: Add authentication middleware
-// router.get('/:key', authenticate, downloadFile);
-router.get('/:key', downloadFile);
+// Protected by authentication middleware
+router.get('/:key', authenticate, downloadFile);
 
 // POST /api/download/decrypt - Download and decrypt file on server
 // Accepts encryption parameters and returns decrypted file
-// TODO: Add authentication middleware
-router.post('/decrypt', downloadAndDecrypt);
+// Protected by authentication middleware
+router.post('/decrypt', authenticate, downloadAndDecrypt);
 
 // GET /api/download/metadata/:key - Get file metadata from blockchain
-// TODO: Implement blockchain metadata retrieval in Part 4
-router.get('/metadata/:key', getFileMetadata);
+// Optional authentication
+router.get('/metadata/:key', optionalAuth, getFileMetadata);
 
 module.exports = router;

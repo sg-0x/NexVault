@@ -6,3 +6,10 @@ node_modules/
 .idea/
 dist/
 coverage/
+
+# Firebase Service Account Key (contains secrets - NEVER commit)
+serviceAccountKey.json
+
+# Hardhat build artifacts
+hardhat/artifacts/
+hardhat/cache/

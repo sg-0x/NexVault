@@ -1,25 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Shield, User, Wallet, PieChart, Database, LogOut } from 'lucide-react';
+import { Shield, User, Wallet, PieChart, LogOut, Plus, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { logoutUser } from '../services/authService';
+import { fetchUserFiles, getWalletAddresses, linkWalletAddress, unlinkWalletAddress } from '../services/api';
 
-const humanSize = (gb) => `${gb.toFixed(1)} GB`;
+// Helper function to format storage size in MB
+const formatStorageMB = (mb) => {
+  if (mb < 1) {
+    return `${(mb * 1024).toFixed(0)} KB`;
+  }
+  return `${mb.toFixed(1)} MB`;
+};
 
 const Profile = () => {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [plan, setPlan] = useState({ name: 'Free', quotaGB: 5, usedGB: 1.2, renewalDate: '—' });
+  const [plan, setPlan] = useState({ quotaMB: 5120, usedMB: 0 }); // 5 GB = 5120 MB
   const [connectedWallets, setConnectedWallets] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [isBackingUpKey, setIsBackingUpKey] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [showLinkWallet, setShowLinkWallet] = useState(false);
+  const [walletAddressInput, setWalletAddressInput] = useState('');
+  const [linkingWallet, setLinkingWallet] = useState(false);
 
   useEffect(() => {
     // Listen to Firebase auth state for profile info (photo/displayName/email)
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
       if (u) {
         setUser({
           displayName: u.displayName || 'Unnamed',
@@ -27,46 +36,109 @@ const Profile = () => {
           photoURL: u.photoURL || null,
           uid: u.uid,
         });
+
+        // Fetch actual storage data
+        try {
+          const userFiles = await fetchUserFiles();
+          const totalUsedMB = userFiles.reduce((sum, file) => {
+            const fileSize = file.originalSizeMB || file.encryptedSizeMB || 0;
+            return sum + fileSize;
+          }, 0);
+          setPlan((prev) => ({
+            ...prev,
+            usedMB: totalUsedMB,
+          }));
+        } catch (error) {
+          console.error('Failed to fetch files for storage:', error);
+        }
+
+        // Fetch active sessions from Firebase (if available)
+        // For now, we'll use a placeholder that shows current session
+        const browserInfo = navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge)\/[\d.]+/)?.[0] || 'Browser';
+        const deviceType = navigator.userAgent.includes('Mobile') ? 'Mobile' : 'Desktop';
+        const currentSession = {
+          id: 'current',
+          device: `${deviceType}: ${browserInfo}`,
+          lastSeen: new Date().toLocaleString('en-US', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          }).replace(',', ''),
+        };
+        setSessions([currentSession]);
       } else {
         setUser(null);
       }
     });
 
-    // load other user-specific data — replace with real fetches
-    setConnectedWallets([
-      { chain: 'ethereum', address: '0xAbC...123', label: 'MetaMask', verified: true },
-    ]);
-    setSessions([
-      { id: 's1', device: 'Chrome — Macbook', lastSeen: '2025-11-10 10:12' },
-      { id: 's2', device: 'Mobile — Android', lastSeen: '2025-11-09 22:03' },
-    ]);
-    setPlan({ name: 'Pro', quotaGB: 200, usedGB: 37.5, renewalDate: '2025-12-01' });
+    // Load connected wallets from backend
+    const loadWallets = async () => {
+      try {
+        const addresses = await getWalletAddresses();
+        setConnectedWallets(
+          addresses.map((addr) => ({
+            chain: 'ethereum',
+            address: addr,
+            label: 'MetaMask',
+            verified: true,
+          }))
+        );
+      } catch (error) {
+        console.error('Failed to load wallet addresses:', error);
+        // Fallback to empty array
+        setConnectedWallets([]);
+      }
+    };
+    loadWallets();
 
     return () => unsub();
   }, []);
-
-  const handleBackupKey = async () => {
-    setIsBackingUpKey(true);
-    try {
-      // Example: call to generate & download encrypted key
-      // const res = await api.exportKey(user.uid);
-      // download(res.blob, `nexvault-key-${user.uid}.json`);
-      alert('Key export prepared — integrate real key-export flow here.');
-    } catch (e) {
-      console.error(e);
-      alert('Key backup failed.');
-    }
-    setIsBackingUpKey(false);
-  };
 
   const handleRevokeSession = (id) => {
     setSessions((s) => s.filter((x) => x.id !== id));
     // call API to revoke session
   };
 
-  const handleDisconnectWallet = (addr) => {
-    setConnectedWallets((w) => w.filter((x) => x.address !== addr));
-    // call API to disconnect
+  const handleDisconnectWallet = async (addr) => {
+    try {
+      await unlinkWalletAddress(addr);
+      setConnectedWallets((w) => w.filter((x) => x.address !== addr));
+      alert('Wallet address unlinked successfully');
+    } catch (error) {
+      console.error('Failed to unlink wallet:', error);
+      alert(`Failed to unlink wallet: ${error.message}`);
+    }
+  };
+
+  const handleLinkWallet = async () => {
+    if (!walletAddressInput || !/^0x[a-fA-F0-9]{40}$/.test(walletAddressInput)) {
+      alert('Please enter a valid Ethereum address (0x followed by 40 hex characters)');
+      return;
+    }
+
+    setLinkingWallet(true);
+    try {
+      await linkWalletAddress(walletAddressInput);
+      setConnectedWallets((w) => [
+        ...w,
+        {
+          chain: 'ethereum',
+          address: walletAddressInput,
+          label: 'MetaMask',
+          verified: true,
+        },
+      ]);
+      setWalletAddressInput('');
+      setShowLinkWallet(false);
+      alert('Wallet address linked successfully!');
+    } catch (error) {
+      console.error('Failed to link wallet:', error);
+      alert(`Failed to link wallet: ${error.message}`);
+    } finally {
+      setLinkingWallet(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -115,19 +187,6 @@ const Profile = () => {
 
           <div className="flex items-center space-x-3">
             <button
-              onClick={handleBackupKey}
-              className="px-4 py-2 rounded-lg font-medium"
-              style={{
-                background: 'linear-gradient(135deg, #13ba82 0%, #0fa070 100%)',
-                color: 'white',
-                boxShadow: '0 6px 18px rgba(19,186,130,0.25)',
-              }}
-              disabled={isBackingUpKey}
-            >
-              {isBackingUpKey ? 'Preparing...' : 'Backup Encryption Key'}
-            </button>
-
-            <button
               onClick={handleLogout}
               className="px-3 py-2 rounded-lg flex items-center space-x-2"
               style={{
@@ -143,38 +202,24 @@ const Profile = () => {
         </div>
 
         {/* Top summary cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <PieChart className="w-6 h-6 text-white" />
-                <div>
-                  <p className="text-sm text-gray-300">Storage</p>
-                  <p className="text-lg font-semibold text-white">{humanSize(plan.usedGB)} / {humanSize(plan.quotaGB)}</p>
-                </div>
+            <div className="flex items-center gap-3 mb-3">
+              <PieChart className="w-6 h-6 text-white" />
+              <div>
+                <p className="text-sm text-gray-300">Storage</p>
+                <p className="text-lg font-semibold text-white">{formatStorageMB(plan.usedMB)} / {formatStorageMB(plan.quotaMB)}</p>
               </div>
-              <div className="text-sm text-gray-400">Renew: {plan.renewalDate}</div>
             </div>
             <div className="w-full bg-white/10 h-3 rounded-full overflow-hidden">
               <div
                 className="h-full rounded-full"
                 style={{
-                  width: `${(plan.usedGB / Math.max(1, plan.quotaGB)) * 100}%`,
+                  width: `${(plan.usedMB / Math.max(1, plan.quotaMB)) * 100}%`,
                   background: 'linear-gradient(90deg, #13ba82, #0fa070)',
                 }}
               />
             </div>
-          </div>
-
-          <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
-            <div className="flex items-center gap-3 mb-2">
-              <Database className="w-6 h-6 text-white" />
-              <div>
-                <p className="text-sm text-gray-300">Pinned Objects</p>
-                <p className="text-lg font-semibold text-white">1,245</p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-400">Replication: 3 nodes • Auto-pin: On</p>
           </div>
 
           <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
@@ -198,18 +243,9 @@ const Profile = () => {
             {/* Storage section */}
             <section className="mb-6">
               <h3 className="text-sm text-gray-300 mb-2">Storage</h3>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium">{humanSize(plan.usedGB)} used</p>
-                  <p className="text-sm text-gray-400">Plan: {plan.name} • {plan.quotaGB} GB</p>
-                </div>
-                <button
-                  className="px-3 py-1 rounded-md"
-                  style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}
-                  onClick={() => alert('Open upgrade flow')}
-                >
-                  Upgrade Plan
-                </button>
+              <div>
+                <p className="text-white font-medium">{formatStorageMB(plan.usedMB)} used</p>
+                <p className="text-sm text-gray-400">Total quota: {formatStorageMB(plan.quotaMB)}</p>
               </div>
             </section>
 
@@ -217,47 +253,86 @@ const Profile = () => {
             <section className="mb-6">
               <h3 className="text-sm text-gray-300 mb-2">Sharing</h3>
               <p className="text-sm text-gray-400">
-                Active shared links: <span className="text-white font-medium">4</span>.
-                Default link permission: <span className="text-white font-medium">Read</span>
+                Manage file access permissions and shared addresses
               </p>
-              <div className="mt-3 flex gap-3">
+              <div className="mt-3">
                 <button
                   className="px-3 py-2 rounded-md"
                   style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}
-                  onClick={() => alert('Open shares manager')}
+                  onClick={() => window.location.assign('/access-control')}
                 >
                   Manage Shares
-                </button>
-                <button
-                  className="px-3 py-2 rounded-md"
-                  style={{ background: 'rgba(255,255,255,0.03)', color: '#13ba82' }}
-                  onClick={() => alert('Create share link')}
-                >
-                  Create Share Link
                 </button>
               </div>
             </section>
 
             {/* Connected wallets */}
             <section>
-              <h3 className="text-sm text-gray-300 mb-3">Connected Wallets</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm text-gray-300">Connected Wallets</h3>
+                <button
+                  onClick={() => setShowLinkWallet(!showLinkWallet)}
+                  className="px-2 py-1 rounded-md text-sm flex items-center gap-1"
+                  style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}
+                >
+                  <Plus className="w-4 h-4" /> Link Wallet
+                </button>
+              </div>
+              
+              {showLinkWallet && (
+                <div className="mb-3 p-3 rounded-md" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <input
+                    type="text"
+                    value={walletAddressInput}
+                    onChange={(e) => setWalletAddressInput(e.target.value)}
+                    placeholder="0x742d35Cc6634C0532925a3b844..."
+                    className="w-full px-3 py-2 rounded-md text-sm mb-2"
+                    style={{ background: 'rgba(0,0,0,0.4)', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleLinkWallet}
+                      disabled={linkingWallet}
+                      className="px-3 py-1 rounded-md text-sm flex-1"
+                      style={{
+                        background: linkingWallet ? 'rgba(19,186,130,0.3)' : 'linear-gradient(135deg, #13ba82 0%, #0fa070 100%)',
+                        color: 'white',
+                        cursor: linkingWallet ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {linkingWallet ? 'Linking...' : 'Link'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowLinkWallet(false);
+                        setWalletAddressInput('');
+                      }}
+                      className="px-3 py-1 rounded-md text-sm"
+                      style={{ background: 'rgba(255,255,255,0.05)', color: 'white' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {connectedWallets.length === 0 ? (
-                <p className="text-gray-400">No wallets connected.</p>
+                <p className="text-gray-400">No wallets connected. Link a wallet to see files shared with you.</p>
               ) : (
                 connectedWallets.map((w) => (
                   <div key={w.address} className="flex items-center justify-between mb-3 p-3 rounded-md" style={{ background: 'rgba(255,255,255,0.01)' }}>
-                    <div>
+                    <div className="flex-1 min-w-0">
                       <p className="text-white font-medium">{w.label}</p>
-                      <p className="text-sm text-gray-400">{w.address}</p>
+                      <p className="text-sm text-gray-400 font-mono truncate">{w.address}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 ml-2">
                       {w.verified ? <span className="text-green-400 text-sm">Verified</span> : <span className="text-yellow-400 text-sm">Unverified</span>}
                       <button
                         onClick={() => handleDisconnectWallet(w.address)}
                         className="px-3 py-1 rounded-md text-sm"
                         style={{ background: 'rgba(255,255,255,0.02)', color: '#ef4444' }}
                       >
-                        Disconnect
+                        <X className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -283,10 +358,6 @@ const Profile = () => {
                 <div className="text-sm text-gray-300">Enabled</div>
               </div>
               <div className="text-sm text-gray-400 mt-2">Key backup: <strong className="text-white ml-1">Backed up</strong></div>
-              <div className="mt-3 flex gap-2">
-                <button className="px-3 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }} onClick={handleBackupKey}>Download Backup</button>
-                <button className="px-3 py-1 rounded-md" style={{ background: 'rgba(255,255,255,0.03)', color: '#ef4444' }} onClick={() => alert('Rotate key flow')}>Rotate Key</button>
-              </div>
             </div>
 
             {/* Sessions */}

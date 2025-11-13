@@ -71,6 +71,11 @@ const NavMenu = () => {
   // sync active menu with react-router location changes
   useEffect(() => {
     const p = location.pathname || defaultPath;
+    // Don't set active menu for Profile or Settings pages
+    if (p === '/profile' || p === '/settings') {
+      setActiveMenu(null);
+      return;
+    }
     const match = menuItems.find((mi) => mi.path === p);
     const newActive = match ? match.name : 'Dashboard';
     setActiveMenu(newActive);
@@ -145,7 +150,7 @@ const NavMenu = () => {
         <div className="flex items-center space-x-2">
           {menuItems.map((item, index) => {
             const Icon = item.icon;
-            const isActive = activeMenu === item.name;
+            const isActive = activeMenu === item.name && activeMenu !== null;
 
             return (
               <motion.button

@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { uploadFile, getUploadStatus } = require('../controllers/upload.controller');
+const { authenticate, optionalAuth } = require('../middleware/auth');
 
 // Configure Multer for in-memory file storage
 // Files are stored as Buffer objects in req.file.buffer
@@ -18,12 +19,11 @@ const upload = multer({
 
 // POST /api/upload - Upload and encrypt a file
 // Accepts multipart/form-data with 'file' field
-// TODO: Add authentication middleware when ready
-// router.post('/', authenticate, upload.single('file'), uploadFile);
-router.post('/', upload.single('file'), uploadFile);
+// Protected by authentication middleware
+router.post('/', authenticate, upload.single('file'), uploadFile);
 
 // GET /api/upload/status/:fileId - Check upload status
-// This will be used for async upload tracking in future
-router.get('/status/:fileId', getUploadStatus);
+// Optional authentication - works with or without token
+router.get('/status/:fileId', optionalAuth, getUploadStatus);
 
 module.exports = router;

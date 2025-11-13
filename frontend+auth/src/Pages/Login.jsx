@@ -25,22 +25,86 @@ const Login = () => {
   const handleMetaMaskConnect = async () => {
     setLoading(true);
     try {
-      // MetaMask connection logic
-      if (typeof window.ethereum !== 'undefined') {
-        const accounts = await window.ethereum.request({
-          method: 'eth_requestAccounts'
-        });
-        console.log('Connected account:', accounts[0]);
-        // Handle successful connection
+      // Check if MetaMask is installed
+      if (typeof window.ethereum === 'undefined') {
+        alert('Please install MetaMask to use this feature!');
+        setLoading(false);
+        return;
+      }
+
+      // Sepolia network configuration
+      const sepoliaChainId = '0xaa36a7'; // 11155111 in hex
+      const sepoliaNetwork = {
+        chainId: sepoliaChainId,
+        chainName: 'Sepolia',
+        nativeCurrency: {
+          name: 'ETH',
+          symbol: 'ETH',
+          decimals: 18,
+        },
+        rpcUrls: ['https://sepolia.infura.io/v3/'],
+        blockExplorerUrls: ['https://sepolia.etherscan.io'],
+      };
+
+      // Get current chain ID
+      const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
+
+      // Switch to Sepolia if not already on it
+      if (currentChainId !== sepoliaChainId) {
+        try {
+          // Try to switch network
+          await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: sepoliaChainId }],
+          });
+        } catch (switchError) {
+          // If network doesn't exist, add it
+          if (switchError.code === 4902) {
+            try {
+              await window.ethereum.request({
+                method: 'wallet_addEthereumChain',
+                params: [sepoliaNetwork],
+              });
+            } catch (addError) {
+              console.error('Failed to add Sepolia network:', addError);
+              alert('Failed to add Sepolia network to MetaMask. Please add it manually in MetaMask settings.');
+              setLoading(false);
+              return;
+            }
+          } else {
+            console.error('Failed to switch to Sepolia:', switchError);
+            alert('Failed to switch to Sepolia network. Please switch manually in MetaMask.');
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // Request account access
+      const accounts = await window.ethereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      if (accounts && accounts.length > 0) {
+        console.log('✅ MetaMask connected:', accounts[0]);
+        console.log('Network:', await window.ethereum.request({ method: 'eth_chainId' }));
+        // Navigate to dashboard
         navigate('/dashboard');
       } else {
-        alert('Please install MetaMask to use this feature!');
+        alert('No accounts found. Please unlock MetaMask.');
       }
     } catch (error) {
       console.error('MetaMask connection error:', error);
-      alert('MetaMask connection failed. See console for details.');
+      if (error.code === 4001) {
+        alert('MetaMask connection rejected. Please approve the connection request.');
+      } else if (error.code === -32002) {
+        alert('MetaMask request already pending. Please check your MetaMask extension.');
+      } else {
+        alert(`MetaMask connection failed: ${error.message || 'Unknown error'}`);
+      }
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleGoogleSignIn = async () => {

@@ -8,6 +8,7 @@ const router = express.Router();
 const uploadRoutes = require('./upload.routes');
 const downloadRoutes = require('./download.routes');
 const accessRoutes = require('./access.routes');
+const filesRoutes = require('./files.routes');
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -22,5 +23,6 @@ router.get('/health', (req, res) => {
 router.use('/upload', uploadRoutes);
 router.use('/download', downloadRoutes);
 router.use('/access', accessRoutes);
+router.use('/files', filesRoutes);
 
 module.exports = router;
