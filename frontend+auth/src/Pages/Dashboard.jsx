@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { PieChart, Clock, Upload, Shield, Wallet, ExternalLink, FileText, Lock, Globe, File, Image, Video, FileSpreadsheet, Archive, RefreshCw, Share2 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase/config';
@@ -42,6 +43,7 @@ const formatFileSize = (sizeMB) => {
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [files, setFiles] = useState([]);
   const [ownedFiles, setOwnedFiles] = useState([]);
@@ -116,7 +118,7 @@ const Dashboard = () => {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => window.location.assign('/access-control')}
+              onClick={() => navigate('/access-control')}
               className="px-3 py-2 rounded-lg"
               style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}
             >
@@ -151,7 +153,7 @@ const Dashboard = () => {
           <div 
             className="rounded-xl p-4 cursor-pointer hover:opacity-80 transition-opacity" 
             style={{ background: 'rgba(255,255,255,0.02)' }}
-            onClick={() => window.location.assign('/access-control')}
+            onClick={() => navigate('/access-control')}
           >
             <div className="flex items-center gap-3 mb-2">
               <Upload className="w-6 h-6 text-white" />
@@ -182,7 +184,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-bold text-white">My Files</h2>
             <button
-              onClick={() => window.location.assign('/upload-file')}
+              onClick={() => navigate('/upload-file')}
               className="px-4 py-2 rounded-lg font-medium"
               style={{ background: 'linear-gradient(135deg, #13ba82 0%, #0fa070 100%)', color: 'white' }}
             >
@@ -210,7 +212,7 @@ const Dashboard = () => {
               <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
               <p className="text-gray-400 mb-4">No files uploaded yet</p>
               <button
-                onClick={() => window.location.assign('/upload-file')}
+                onClick={() => navigate('/upload-file')}
                 className="px-6 py-3 rounded-lg font-medium"
                 style={{ background: 'linear-gradient(135deg, #13ba82 0%, #0fa070 100%)', color: 'white' }}
               >
@@ -392,7 +394,7 @@ const Dashboard = () => {
                 <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-400">No files uploaded yet</p>
                 <button
-                  onClick={() => window.location.assign('/upload-file')}
+                  onClick={() => navigate('/upload-file')}
                   className="mt-3 px-4 py-2 rounded-lg"
                   style={{ background: 'linear-gradient(135deg, #13ba82 0%, #0fa070 100%)', color: 'white' }}
                 >
@@ -430,13 +432,13 @@ const Dashboard = () => {
         <div className="mt-6 rounded-xl p-6" style={{ background: 'rgba(255,255,255,0.02)' }}>
           <h2 className="text-lg font-semibold text-white mb-4">Quick actions</h2>
           <div className="flex flex-wrap gap-3">
-            <button onClick={() => window.location.assign('/upload-file')} className="px-4 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}>
+            <button onClick={() => navigate('/upload-file')} className="px-4 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}>
               <Clock className="inline-block mr-2" /> Upload File
             </button>
-            <button onClick={() => window.location.assign('/access-control')} className="px-4 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}>
+            <button onClick={() => navigate('/access-control')} className="px-4 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}>
               <Shield className="inline-block mr-2" /> Manage Access
             </button>
-            <button onClick={() => window.location.assign('/profile')} className="px-4 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}>
+            <button onClick={() => navigate('/profile')} className="px-4 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', color: 'white' }}>
               <Wallet className="inline-block mr-2" /> Wallets
             </button>
           </div>

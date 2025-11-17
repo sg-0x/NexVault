@@ -37,6 +37,9 @@ const sizedPhotoURL = (url, size = 128) => {
   }
 };
 
+// Track if navbar has animated (persists across remounts)
+let hasAnimated = false;
+
 const NavMenu = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -124,11 +127,16 @@ const NavMenu = () => {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   }, [displayName]);
 
+  // Mark as animated on first render
+  if (!hasAnimated) {
+    hasAnimated = true;
+  }
+
   return (
     <motion.nav
-      initial={{ y: -100, opacity: 0 }}
+      initial={hasAnimated ? false : { y: -100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6, ease: 'easeOut' }}
+      transition={{ duration: hasAnimated ? 0 : 0.6, ease: 'easeOut' }}
       className="fixed top-0 left-0 right-0 z-50 px-8 py-4"
       style={{
         background: 'rgba(9, 8, 13, 1)',
