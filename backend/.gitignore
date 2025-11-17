@@ -13,3 +13,4 @@ serviceAccountKey.json
 # Hardhat build artifacts
 hardhat/artifacts/
 hardhat/cache/
+firebase_key_for_railway.txt
