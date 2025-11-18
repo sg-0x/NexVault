@@ -31,12 +31,9 @@ const corsOptions = {
       process.env.FRONTEND_URL, // Production frontend URL from env
     ].filter(Boolean); // Remove undefined values
 
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.log(`[CORS] Allowed origin: ${origin}`);
-      callback(null, true); // In development, allow all origins (remove in production)
-    }
+    // Allow all origins for now (production should restrict this)
+    console.log(`[CORS] Request from origin: ${origin}`);
+    callback(null, true);
   },
   credentials: true, // Allow cookies and authorization headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
