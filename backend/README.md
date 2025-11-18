@@ -19,19 +19,19 @@ A blockchain-assisted cloud storage backend built with Node.js, AWS S3, and Ethe
 ## 🛠️ Installation
 
 1. Clone the repository and navigate to the backend folder:
-```bash
-cd nexvault/backend
-```
+   ```bash
+   cd nexvault/backend
+   ```
 
 2. Install dependencies:
-```bash
-npm install
-```
+   ```bash
+   npm install
+   ```
 
 3. Create a `.env` file based on `.env.example`:
-```bash
-cp .env.example .env
-```
+   ```bash
+   cp .env.example .env
+   ```
 
 4. Update the `.env` file with your actual credentials:
    - AWS credentials and S3 bucket name
