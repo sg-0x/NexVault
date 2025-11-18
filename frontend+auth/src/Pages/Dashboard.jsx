@@ -5,6 +5,13 @@ import { PieChart, Clock, Upload, Shield, Wallet, ExternalLink, FileText, Lock, 
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { fetchUserFiles, getDownloadUrl } from '../services/api';
+import { 
+  isCryptoSupported, 
+  decryptFileClientSide, 
+  createDownloadableFile, 
+  downloadEncryptedFile,
+  estimateMemoryRequirements 
+} from '../utils/cryptoUtils';
 
 // Helper function to format storage size in MB
 const formatStorageMB = (mb) => {
@@ -53,6 +60,8 @@ const Dashboard = () => {
   const [plan, setPlan] = useState({ name: 'Free', quotaMB: 5120, usedMB: 0 }); // 5 GB = 5120 MB
   const [nodeHealth, setNodeHealth] = useState({ replicas: 3, online: 3 });
   const [downloadingFile, setDownloadingFile] = useState(null); // Track which file is being downloaded
+  const [downloadProgress, setDownloadProgress] = useState({}); // Track download progress per file
+  const [decryptionStatus, setDecryptionStatus] = useState({}); // Track decryption status per file
 
   // Function to load files
   const loadFiles = async (userUid) => {
@@ -108,38 +117,186 @@ const Dashboard = () => {
     return () => unsub();
   }, []);
 
-  // Handle file click - generate pre-signed URL and open
+  // Handle file click - download encrypted file and decrypt client-side
   const handleFileClick = async (file) => {
-    if (!file.s3Key) {
-      alert('Error: File S3 key not found');
-      return;
-    }
-
-    // Prevent multiple simultaneous downloads
+    // Prevent duplicate clicks
     if (downloadingFile === file.id) {
+      console.log('[Dashboard] Download already in progress for this file');
       return;
     }
 
+    console.log(`[Dashboard] User clicked file: ${file.fileName} (${file.id})`);
     setDownloadingFile(file.id);
+    setDecryptionStatus(prev => ({ ...prev, [file.id]: 'initializing' }));
 
     try {
-      console.log(`Generating download URL for: ${file.fileName} (${file.s3Key})`);
+      // Step 1: Check browser compatibility
+      if (!isCryptoSupported()) {
+        throw new Error(
+          'Your browser does not support file decryption. ' +
+          'Please use a modern browser (Chrome 37+, Firefox 34+, Safari 11+).'
+        );
+      }
+      console.log('[Dashboard] ✓ Browser supports Web Crypto API');
+
+      // Step 2: Validate file has S3 key
+      if (!file.s3Key) {
+        throw new Error('File S3 key is missing. Cannot download file.');
+      }
+
+      // Step 3: Validate encryption keys exist
+      if (!file.aesKey || !file.iv || !file.authTag) {
+        throw new Error(
+          'Encryption keys are missing from file metadata. ' +
+          'This file cannot be decrypted. Please re-upload the file.'
+        );
+      }
+      console.log('[Dashboard] ✓ Encryption keys validated');
+
+      // Step 4: Check file size and warn user
+      const fileSizeMB = file.encryptedSizeMB || file.originalSizeMB || 0;
+      const memoryEstimate = estimateMemoryRequirements(fileSizeMB);
       
-      // Call backend to get pre-signed URL with access control verification
+      console.log(`[Dashboard] File size: ${fileSizeMB.toFixed(2)} MB`);
+      console.log(`[Dashboard] Estimated memory: ${memoryEstimate.estimatedMemoryMB} MB`);
+      console.log(`[Dashboard] ${memoryEstimate.message}`);
+
+      if (memoryEstimate.warning) {
+        const proceed = confirm(
+          `⚠️ Large File Warning\n\n` +
+          `File size: ${fileSizeMB.toFixed(1)} MB\n` +
+          `Estimated memory: ~${memoryEstimate.estimatedMemoryMB} MB\n\n` +
+          `${memoryEstimate.message}\n\n` +
+          `This may take 10-30 seconds. Continue?`
+        );
+        
+        if (!proceed) {
+          console.log('[Dashboard] User cancelled large file download');
+          setDownloadingFile(null);
+          setDecryptionStatus(prev => ({ ...prev, [file.id]: null }));
+          return;
+        }
+      }
+
+      // Step 5: Get pre-signed URL from backend
+      console.log('[Dashboard] [1/4] Requesting pre-signed URL from backend...');
+      setDecryptionStatus(prev => ({ ...prev, [file.id]: 'fetching-url' }));
+
       const response = await getDownloadUrl(file.s3Key);
       
-      if (response.success && response.data?.downloadUrl) {
-        console.log('✅ Pre-signed URL generated successfully');
-        // Open the pre-signed URL in a new tab
-        window.open(response.data.downloadUrl, '_blank');
-      } else {
-        throw new Error('Failed to generate download URL');
+      if (!response.success || !response.data?.downloadUrl) {
+        throw new Error('Failed to generate download URL from backend');
       }
+
+      const presignedUrl = response.data.downloadUrl;
+      console.log('[Dashboard] ✓ Pre-signed URL generated');
+
+      // Step 6: Download encrypted file from S3
+      console.log('[Dashboard] [2/4] Downloading encrypted file from S3...');
+      setDecryptionStatus(prev => ({ ...prev, [file.id]: 'downloading' }));
+
+      const encryptedArrayBuffer = await downloadEncryptedFile(
+        presignedUrl,
+        (progress) => {
+          setDownloadProgress(prev => ({ ...prev, [file.id]: progress }));
+          console.log(`[Dashboard] Download progress: ${progress}%`);
+        }
+      );
+
+      console.log(`[Dashboard] ✓ Downloaded ${(encryptedArrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+      setDownloadProgress(prev => ({ ...prev, [file.id]: 100 }));
+
+      // Step 7: Decrypt file in browser
+      console.log('[Dashboard] [3/4] Decrypting file with AES-256-GCM...');
+      setDecryptionStatus(prev => ({ ...prev, [file.id]: 'decrypting' }));
+
+      const decryptedBuffer = await decryptFileClientSide(
+        encryptedArrayBuffer,
+        file.aesKey,
+        file.iv,
+        file.authTag
+      );
+
+      console.log(`[Dashboard] ✓ Decrypted ${(decryptedBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+
+      // Step 8: Create blob URL
+      console.log('[Dashboard] [4/4] Creating downloadable file...');
+      setDecryptionStatus(prev => ({ ...prev, [file.id]: 'creating-blob' }));
+
+      const blobUrl = createDownloadableFile(
+        decryptedBuffer,
+        file.fileName,
+        file.mimeType || 'application/octet-stream'
+      );
+
+      console.log('[Dashboard] ✓ Blob URL created');
+
+      // Step 9: Open file in new tab OR trigger download
+      console.log('[Dashboard] Opening file in new tab...');
+      setDecryptionStatus(prev => ({ ...prev, [file.id]: 'opening' }));
+
+      const newWindow = window.open(blobUrl, '_blank');
+
+      // Fallback: If popup blocked, trigger download instead
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        console.log('[Dashboard] Popup blocked, triggering download instead...');
+        
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = file.fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        console.log('[Dashboard] ✓ Download triggered');
+      } else {
+        console.log('[Dashboard] ✓ File opened in new tab');
+      }
+
+      // Step 10: Cleanup blob URL after 2 seconds
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl);
+        console.log('[Dashboard] ✓ Blob URL cleaned up');
+      }, 2000);
+
+      console.log('[Dashboard] ✅ File decryption and opening completed successfully!');
+
     } catch (error) {
-      console.error('Failed to generate download URL:', error);
-      alert(`Failed to open file: ${error.message || 'Access denied or network error'}`);
+      console.error('[Dashboard] ❌ Failed to open file:', error);
+      
+      // User-friendly error messages
+      let errorMessage = 'Failed to open file';
+      
+      if (error.message?.includes('browser does not support')) {
+        errorMessage = '🔒 ' + error.message;
+      } else if (error.message?.includes('missing')) {
+        errorMessage = '🔑 ' + error.message;
+      } else if (error.message?.includes('Decryption failed')) {
+        errorMessage = '⚠️ ' + error.message;
+      } else if (error.message?.includes('Download failed')) {
+        errorMessage = '📥 ' + error.message;
+      } else if (error.message?.includes('memory')) {
+        errorMessage = '💾 ' + error.message;
+      } else {
+        errorMessage = `❌ ${error.message || 'Unknown error occurred'}`;
+      }
+
+      alert(errorMessage);
+      
     } finally {
+      // Cleanup state
       setDownloadingFile(null);
+      setDownloadProgress(prev => {
+        const newState = { ...prev };
+        delete newState[file.id];
+        return newState;
+      });
+      setDecryptionStatus(prev => {
+        const newState = { ...prev };
+        delete newState[file.id];
+        return newState;
+      });
     }
   };
 
@@ -273,10 +430,27 @@ const Dashboard = () => {
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
                     onClick={() => handleFileClick(file)}
                   >
-                    {/* Loading overlay */}
+                    {/* Loading overlay with progress and status */}
                     {downloadingFile === file.id && (
-                      <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center z-10">
-                        <Loader2 className="w-8 h-8 text-white animate-spin" />
+                      <div className="absolute inset-0 bg-black/80 rounded-xl flex flex-col items-center justify-center z-10 p-4">
+                        <Loader2 className="w-10 h-10 text-white animate-spin mb-3" />
+                        <p className="text-white text-sm font-medium mb-2">
+                          {decryptionStatus[file.id] === 'initializing' && 'Initializing...'}
+                          {decryptionStatus[file.id] === 'fetching-url' && 'Getting download link...'}
+                          {decryptionStatus[file.id] === 'downloading' && `Downloading: ${downloadProgress[file.id] || 0}%`}
+                          {decryptionStatus[file.id] === 'decrypting' && '🔓 Decrypting file...'}
+                          {decryptionStatus[file.id] === 'creating-blob' && 'Preparing file...'}
+                          {decryptionStatus[file.id] === 'opening' && 'Opening file...'}
+                        </p>
+                        {decryptionStatus[file.id] === 'downloading' && downloadProgress[file.id] > 0 && (
+                          <div className="w-full max-w-xs bg-white/10 h-2 rounded-full overflow-hidden mt-2">
+                            <div 
+                              className="h-full bg-gradient-to-r from-green-400 to-blue-500 transition-all duration-300"
+                              style={{ width: `${downloadProgress[file.id]}%` }}
+                            />
+                          </div>
+                        )}
+                        <p className="text-gray-400 text-xs mt-2">Please wait...</p>
                       </div>
                     )}
                     
@@ -346,10 +520,27 @@ const Dashboard = () => {
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(19,186,130,0.3)' }}
                     onClick={() => handleFileClick(file)}
                   >
-                    {/* Loading overlay */}
+                    {/* Loading overlay with progress and status */}
                     {downloadingFile === file.id && (
-                      <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center z-10">
-                        <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
+                      <div className="absolute inset-0 bg-black/80 rounded-xl flex flex-col items-center justify-center z-10 p-4">
+                        <Loader2 className="w-10 h-10 text-green-400 animate-spin mb-3" />
+                        <p className="text-white text-sm font-medium mb-2">
+                          {decryptionStatus[file.id] === 'initializing' && 'Initializing...'}
+                          {decryptionStatus[file.id] === 'fetching-url' && 'Getting download link...'}
+                          {decryptionStatus[file.id] === 'downloading' && `Downloading: ${downloadProgress[file.id] || 0}%`}
+                          {decryptionStatus[file.id] === 'decrypting' && '🔓 Decrypting file...'}
+                          {decryptionStatus[file.id] === 'creating-blob' && 'Preparing file...'}
+                          {decryptionStatus[file.id] === 'opening' && 'Opening file...'}
+                        </p>
+                        {decryptionStatus[file.id] === 'downloading' && downloadProgress[file.id] > 0 && (
+                          <div className="w-full max-w-xs bg-white/10 h-2 rounded-full overflow-hidden mt-2">
+                            <div 
+                              className="h-full bg-gradient-to-r from-green-400 to-emerald-500 transition-all duration-300"
+                              style={{ width: `${downloadProgress[file.id]}%` }}
+                            />
+                          </div>
+                        )}
+                        <p className="text-gray-400 text-xs mt-2">Please wait...</p>
                       </div>
                     )}
                     
