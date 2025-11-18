@@ -139,9 +139,9 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
             <div className="flex items-center gap-3 mb-3">
-              <PieChart className="w-6 h-6 text-white" />
-              <div>
-                <p className="text-sm text-gray-300">Storage</p>
+                <PieChart className="w-6 h-6 text-white" />
+                <div>
+                  <p className="text-sm text-gray-300">Storage</p>
                 <p className="text-lg font-semibold text-white">{formatStorageMB(plan.usedMB)} / {formatStorageMB(plan.quotaMB)}</p>
               </div>
             </div>

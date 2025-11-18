@@ -8,11 +8,12 @@ const logger = require('./utils/logger');
 initializeBlockchain();
 
 // Start server
-const server = app.listen(PORT, () => {
+// Listen on 0.0.0.0 to allow Railway/external connections
+const server = app.listen(PORT, '0.0.0.0', () => {
   logger.success(`🚀 NexVault Backend Server started successfully`);
-  logger.info(`📡 Server running on http://localhost:${PORT}`);
+  logger.info(`📡 Server running on http://0.0.0.0:${PORT}`);
   logger.info(`🔍 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`✅ API Health Check: http://localhost:${PORT}/api/health`);
+  logger.info(`✅ API Health Check: http://0.0.0.0:${PORT}/api/health`);
 });
 
 // Graceful shutdown

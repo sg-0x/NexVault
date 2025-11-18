@@ -213,8 +213,8 @@ const Settings = () => {
             className="px-4 py-2 rounded-lg font-medium"
             style={{ background: 'linear-gradient(135deg, #13ba82 0%, #0fa070 100%)', color: 'white' }}
           >
-            Save settings
-          </button>
+              Save settings
+            </button>
         </div>
 
         {/* Settings Sections */}

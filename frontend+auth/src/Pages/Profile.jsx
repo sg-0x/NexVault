@@ -104,7 +104,7 @@ const Profile = () => {
   const handleDisconnectWallet = async (addr) => {
     try {
       await unlinkWalletAddress(addr);
-      setConnectedWallets((w) => w.filter((x) => x.address !== addr));
+    setConnectedWallets((w) => w.filter((x) => x.address !== addr));
       alert('Wallet address unlinked successfully');
     } catch (error) {
       console.error('Failed to unlink wallet:', error);
@@ -205,9 +205,9 @@ const Profile = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
             <div className="flex items-center gap-3 mb-3">
-              <PieChart className="w-6 h-6 text-white" />
-              <div>
-                <p className="text-sm text-gray-300">Storage</p>
+                <PieChart className="w-6 h-6 text-white" />
+                <div>
+                  <p className="text-sm text-gray-300">Storage</p>
                 <p className="text-lg font-semibold text-white">{formatStorageMB(plan.usedMB)} / {formatStorageMB(plan.quotaMB)}</p>
               </div>
             </div>
@@ -243,7 +243,7 @@ const Profile = () => {
             {/* Storage section */}
             <section className="mb-6">
               <h3 className="text-sm text-gray-300 mb-2">Storage</h3>
-              <div>
+                <div>
                 <p className="text-white font-medium">{formatStorageMB(plan.usedMB)} used</p>
                 <p className="text-sm text-gray-400">Total quota: {formatStorageMB(plan.quotaMB)}</p>
               </div>

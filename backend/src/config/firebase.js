@@ -27,7 +27,7 @@ try {
     
     // Check if file exists
     const fileExists = fs.existsSync(serviceAccountPath);
-    
+  
     if (fileExists) {
       logger.info(`[FIREBASE] Loading service account from file: ${serviceAccountPath}`);
       const serviceAccountJson = fs.readFileSync(serviceAccountPath, 'utf8');

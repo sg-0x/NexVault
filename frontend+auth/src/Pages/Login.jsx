@@ -81,9 +81,9 @@ const Login = () => {
       }
 
       // Request account access
-      const accounts = await window.ethereum.request({
+        const accounts = await window.ethereum.request({
         method: 'eth_requestAccounts',
-      });
+        });
 
       if (accounts && accounts.length > 0) {
         console.log('✅ MetaMask connected:', accounts[0]);
@@ -103,7 +103,7 @@ const Login = () => {
         alert(`MetaMask connection failed: ${error.message || 'Unknown error'}`);
       }
     } finally {
-      setLoading(false);
+    setLoading(false);
     }
   };
 

@@ -148,7 +148,7 @@ const UploadFile = () => {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <p className="text-white font-medium">{f.file.name}</p>
+                    <p className="text-white font-medium">{f.file.name}</p>
                       {f.status === 'uploaded' && <CheckCircle className="w-5 h-5 text-green-400" />}
                       {f.status === 'error' && <XCircle className="w-5 h-5 text-red-400" />}
                     </div>
