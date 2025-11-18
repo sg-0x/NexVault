@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { PieChart, Clock, Upload, Shield, Wallet, ExternalLink, FileText, Lock, Globe, File, Image, Video, FileSpreadsheet, Archive, RefreshCw, Share2 } from 'lucide-react';
+import { PieChart, Clock, Upload, Shield, Wallet, ExternalLink, FileText, Lock, Globe, File, Image, Video, FileSpreadsheet, Archive, RefreshCw, Share2, Loader2 } from 'lucide-react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../firebase/config';
-import { fetchUserFiles } from '../services/api';
+import { fetchUserFiles, getDownloadUrl } from '../services/api';
 
 // Helper function to format storage size in MB
 const formatStorageMB = (mb) => {
@@ -52,6 +52,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [plan, setPlan] = useState({ name: 'Free', quotaMB: 5120, usedMB: 0 }); // 5 GB = 5120 MB
   const [nodeHealth, setNodeHealth] = useState({ replicas: 3, online: 3 });
+  const [downloadingFile, setDownloadingFile] = useState(null); // Track which file is being downloaded
 
   // Function to load files
   const loadFiles = async (userUid) => {
@@ -106,6 +107,41 @@ const Dashboard = () => {
 
     return () => unsub();
   }, []);
+
+  // Handle file click - generate pre-signed URL and open
+  const handleFileClick = async (file) => {
+    if (!file.s3Key) {
+      alert('Error: File S3 key not found');
+      return;
+    }
+
+    // Prevent multiple simultaneous downloads
+    if (downloadingFile === file.id) {
+      return;
+    }
+
+    setDownloadingFile(file.id);
+
+    try {
+      console.log(`Generating download URL for: ${file.fileName} (${file.s3Key})`);
+      
+      // Call backend to get pre-signed URL with access control verification
+      const response = await getDownloadUrl(file.s3Key);
+      
+      if (response.success && response.data?.downloadUrl) {
+        console.log('✅ Pre-signed URL generated successfully');
+        // Open the pre-signed URL in a new tab
+        window.open(response.data.downloadUrl, '_blank');
+      } else {
+        throw new Error('Failed to generate download URL');
+      }
+    } catch (error) {
+      console.error('Failed to generate download URL:', error);
+      alert(`Failed to open file: ${error.message || 'Access denied or network error'}`);
+    } finally {
+      setDownloadingFile(null);
+    }
+  };
 
   return (
     <div className="min-h-screen p-8" style={{ background: '#070708' }}>
@@ -233,15 +269,17 @@ const Dashboard = () => {
                     key={file.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl p-4 cursor-pointer hover:scale-105 transition-transform"
+                    className="rounded-xl p-4 cursor-pointer hover:scale-105 transition-transform relative"
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
-                    onClick={() => {
-                      // Can navigate to file details or download
-                      if (file.s3Url) {
-                        window.open(file.s3Url, '_blank');
-                      }
-                    }}
+                    onClick={() => handleFileClick(file)}
                   >
+                    {/* Loading overlay */}
+                    {downloadingFile === file.id && (
+                      <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center z-10">
+                        <Loader2 className="w-8 h-8 text-white animate-spin" />
+                      </div>
+                    )}
+                    
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -304,14 +342,17 @@ const Dashboard = () => {
                     key={file.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl p-4 cursor-pointer hover:scale-105 transition-transform"
+                    className="rounded-xl p-4 cursor-pointer hover:scale-105 transition-transform relative"
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(19,186,130,0.3)' }}
-                    onClick={() => {
-                      if (file.s3Url) {
-                        window.open(file.s3Url, '_blank');
-                      }
-                    }}
+                    onClick={() => handleFileClick(file)}
                   >
+                    {/* Loading overlay */}
+                    {downloadingFile === file.id && (
+                      <div className="absolute inset-0 bg-black/50 rounded-xl flex items-center justify-center z-10">
+                        <Loader2 className="w-8 h-8 text-green-400 animate-spin" />
+                      </div>
+                    )}
+                    
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: 'rgba(19,186,130,0.1)' }}>
