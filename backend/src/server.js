@@ -14,6 +14,13 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   logger.info(`📡 Server running on http://0.0.0.0:${PORT}`);
   logger.info(`🔍 Environment: ${process.env.NODE_ENV || 'development'}`);
   logger.info(`✅ API Health Check: http://0.0.0.0:${PORT}/api/health`);
+  logger.info(`🌐 Railway will route to this service on port ${PORT}`);
+});
+
+// Handle server errors
+server.on('error', (error) => {
+  logger.error('❌ Server error:', error);
+  process.exit(1);
 });
 
 // Graceful shutdown
