@@ -118,7 +118,8 @@ const UploadFile = () => {
         <div
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
-          className="rounded-xl p-6 mb-6 border-2 border-dashed transition-colors hover:border-white/20"
+          onClick={() => fileInputRef.current.click()}
+          className="rounded-xl p-6 mb-6 border-2 border-dashed transition-colors hover:border-white/20 cursor-pointer"
           style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.1)' }}
         >
           <div className="flex items-center gap-4">

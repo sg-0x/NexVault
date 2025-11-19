@@ -181,7 +181,6 @@ const AccessControl = () => {
               <div key={f.id} className="flex items-center justify-between p-3 rounded-md" style={{ background: 'rgba(255,255,255,0.01)' }}>
                 <div>
                   <p className="text-white font-medium">{f.name}</p>
-                  <p className="text-sm text-gray-400">CID: <span className="font-mono">{f.cid}</span></p>
                   <p className="text-sm text-gray-400">Access: <span className="text-white">{f.access}</span></p>
                 </div>
                 <div className="flex items-center gap-2">
