@@ -28,7 +28,7 @@ const App = () => {
               element={
                 <>
                   <NavMenu />
-                  <div className="mt-20 md:mt-10" />
+                  <div className="md:mt-20 mt-10" />
                   <Dashboard />
                 </>
               }
@@ -39,7 +39,7 @@ const App = () => {
               element={
                 <>
                   <NavMenu />
-                  <div className="mt-20 md:mt-10" />
+                  <div className="md:mt-20 mt-10" />
                   <UploadFile />
                 </>
               }
@@ -50,7 +50,7 @@ const App = () => {
               element={
                 <>
                   <NavMenu />
-                  <div className="mt-20 md:mt-10" />
+                  <div className="md:mt-20 mt-10" />
                   <AccessControl />
                 </>
               }
@@ -61,7 +61,7 @@ const App = () => {
               element={
                 <>
                   <NavMenu />
-                  <div className="mt-20 md:mt-10" />
+                  <div className="md:mt-20 mt-10" />
                   <Profile />
                 </>
               }
@@ -72,7 +72,7 @@ const App = () => {
               element={
                 <>
                   <NavMenu />
-                  <div className="mt-20 md:mt-10" />
+                  <div className="md:mt-20 mt-10" />
                   <Settings />
                 </>
               }

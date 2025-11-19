@@ -1,5 +1,5 @@
 // Blockchain Interaction Utilities
-const { getProvider, getSigner, getContract } = require('../config/blockchain');
+const { getProvider, getSigner, getContract, retryWithBackoff } = require('../config/blockchain');
 const { ethers } = require('ethers');
 const logger = require('./logger');
 
@@ -17,21 +17,29 @@ async function addFileRecord(fileHash, s3Key) {
     // Convert hex hash to bytes32 format if needed
     const bytes32Hash = fileHash.startsWith('0x') ? fileHash : `0x${fileHash}`;
     
-    logger.info('Sending transaction to blockchain...');
+    logger.info('Adding file to blockchain...');
     
-    // Call the addFile function on the smart contract
-    const tx = await contract.addFile(bytes32Hash, s3Key);
+    // Use retry logic for transaction submission and confirmation
+    const txHash = await retryWithBackoff(async () => {
+      logger.info('Sending transaction to blockchain...');
+      
+      // Call the addFile function on the smart contract
+      const tx = await contract.addFile(bytes32Hash, s3Key);
+      
+      logger.info(`Transaction sent. Hash: ${tx.hash}`);
+      logger.info('Waiting for blockchain confirmation...');
+      
+      // Wait for transaction to be mined
+      const receipt = await tx.wait();
+      
+      logger.debug(`Block number: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
+      
+      return tx.hash;
+    }, 5, 2000); // 5 retries, starting with 2 second delay
     
-    logger.info(`Transaction sent. Hash: ${tx.hash}`);
-    logger.info('Waiting for blockchain confirmation...');
+    logger.success(`✅ File metadata added to blockchain. TxHash: ${txHash}`);
     
-    // Wait for transaction to be mined
-    const receipt = await tx.wait();
-    
-    logger.success(`✅ File metadata added to blockchain. TxHash: ${tx.hash}`);
-    logger.debug(`Block number: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
-    
-    return tx.hash;
+    return txHash;
   } catch (error) {
     logger.error(`Blockchain transaction failed: ${error.message}`);
     throw new Error(`Failed to add file record to blockchain: ${error.message}`);
@@ -108,21 +116,28 @@ async function grantFileAccess(fileHash, granteeAddress) {
     const bytes32Hash = fileHash.startsWith('0x') ? fileHash : `0x${fileHash}`;
     
     logger.info(`[INFO] Granting access to ${granteeAddress} for file ${fileHash.substring(0, 10)}...`);
-    logger.info('Sending transaction to blockchain...');
     
-    // Call grantAccess on smart contract
-    const tx = await contract.grantAccess(bytes32Hash, granteeAddress);
+    // Use retry logic for transaction submission and confirmation
+    const txHash = await retryWithBackoff(async () => {
+      logger.info('Sending transaction to blockchain...');
+      
+      // Call grantAccess on smart contract
+      const tx = await contract.grantAccess(bytes32Hash, granteeAddress);
+      
+      logger.info(`Transaction sent. Hash: ${tx.hash}`);
+      logger.info('Waiting for blockchain confirmation...');
+      
+      // Wait for transaction to be mined (with timeout)
+      const receipt = await tx.wait();
+      
+      logger.debug(`Block number: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
+      
+      return tx.hash;
+    }, 5, 2000); // 5 retries, starting with 2 second delay
     
-    logger.info(`Transaction sent. Hash: ${tx.hash}`);
-    logger.info('Waiting for blockchain confirmation...');
+    logger.success(`[SUCCESS] Access granted to ${granteeAddress}. TxHash: ${txHash}`);
     
-    // Wait for transaction to be mined
-    const receipt = await tx.wait();
-    
-    logger.success(`[SUCCESS] Access granted to ${granteeAddress}. TxHash: ${tx.hash}`);
-    logger.debug(`Block number: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
-    
-    return tx.hash;
+    return txHash;
   } catch (error) {
     logger.error(`[ERROR] grantAccess failed: ${error.message}`);
     throw new Error(`Failed to grant access: ${error.message}`);
@@ -148,21 +163,28 @@ async function revokeFileAccess(fileHash, revokeeAddress) {
     const bytes32Hash = fileHash.startsWith('0x') ? fileHash : `0x${fileHash}`;
     
     logger.info(`[INFO] Revoking access for ${revokeeAddress} on file ${fileHash.substring(0, 10)}...`);
-    logger.info('Sending transaction to blockchain...');
     
-    // Call revokeAccess on smart contract
-    const tx = await contract.revokeAccess(bytes32Hash, revokeeAddress);
+    // Use retry logic for transaction submission and confirmation
+    const txHash = await retryWithBackoff(async () => {
+      logger.info('Sending transaction to blockchain...');
+      
+      // Call revokeAccess on smart contract
+      const tx = await contract.revokeAccess(bytes32Hash, revokeeAddress);
+      
+      logger.info(`Transaction sent. Hash: ${tx.hash}`);
+      logger.info('Waiting for blockchain confirmation...');
+      
+      // Wait for transaction to be mined
+      const receipt = await tx.wait();
+      
+      logger.debug(`Block number: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
+      
+      return tx.hash;
+    }, 5, 2000); // 5 retries, starting with 2 second delay
     
-    logger.info(`Transaction sent. Hash: ${tx.hash}`);
-    logger.info('Waiting for blockchain confirmation...');
+    logger.success(`[SUCCESS] Access revoked for ${revokeeAddress}. TxHash: ${txHash}`);
     
-    // Wait for transaction to be mined
-    const receipt = await tx.wait();
-    
-    logger.success(`[SUCCESS] Access revoked for ${revokeeAddress}. TxHash: ${tx.hash}`);
-    logger.debug(`Block number: ${receipt.blockNumber}, Gas used: ${receipt.gasUsed.toString()}`);
-    
-    return tx.hash;
+    return txHash;
   } catch (error) {
     logger.error(`[ERROR] revokeAccess failed: ${error.message}`);
     throw new Error(`Failed to revoke access: ${error.message}`);
