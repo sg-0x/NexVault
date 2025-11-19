@@ -119,12 +119,26 @@ const getUserFiles = async (req, res, next) => {
           // Use Promise.all for parallel queries instead of sequential
           const filePromises = Array.from(allAccessibleHashes).map(async (hash) => {
             try {
-              const hashQuery = hash.startsWith('0x') ? hash : `0x${hash}`;
-              const sharedSnapshot = await db
+              // Blockchain returns with 0x prefix (lowercase), but Firestore stores without it
+              // Try both formats to ensure we find the file
+              const hashWithout0x = hash.startsWith('0x') ? hash.slice(2) : hash;
+              const hashWith0x = hash.startsWith('0x') ? hash : `0x${hash}`;
+              
+              // Try query with 0x first
+              let sharedSnapshot = await db
                 .collection('files')
-                .where('hash', '==', hashQuery)
+                .where('hash', '==', hashWith0x)
                 .limit(1)
                 .get();
+
+              // If not found, try without 0x
+              if (sharedSnapshot.empty) {
+                sharedSnapshot = await db
+                  .collection('files')
+                  .where('hash', '==', hashWithout0x)
+                  .limit(1)
+                  .get();
+              }
 
               if (!sharedSnapshot.empty) {
                 const doc = sharedSnapshot.docs[0];
@@ -132,6 +146,7 @@ const getUserFiles = async (req, res, next) => {
                 
                 // Only include if not already in owned files (avoid duplicates)
                 if (!ownedFiles.find(f => f.id === doc.id)) {
+                  logger.info(`[FILES] Found shared file: ${fileData.fileName} (hash: ${hash.substring(0, 10)}...)`);
                   return {
                     id: doc.id,
                     ...fileData,
@@ -139,6 +154,8 @@ const getUserFiles = async (req, res, next) => {
                     isShared: true,
                   };
                 }
+              } else {
+                logger.warn(`[FILES] File with hash ${hash.substring(0, 10)}... exists on blockchain but not in Firestore`);
               }
               return null;
             } catch (err) {

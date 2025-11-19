@@ -372,10 +372,102 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* Shared Files Section - Show FIRST if there are any shared files */}
+        {sharedFiles.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Share2 className="w-6 h-6 text-green-400" />
+                <h2 className="text-2xl font-bold text-white">Shared with Me</h2>
+                <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30">
+                  {sharedFiles.length} {sharedFiles.length === 1 ? 'file' : 'files'}
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sharedFiles.map((file) => {
+                const { Icon, color } = getFileIcon(file.fileName, file.mimeType);
+                const displayName = file.fileName?.length > 25 
+                  ? `${file.fileName.substring(0, 25)}...` 
+                  : file.fileName;
+
+                return (
+                  <motion.div
+                    key={file.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="rounded-xl p-4 cursor-pointer hover:scale-105 transition-transform relative"
+                    style={{ background: 'rgba(19,186,130,0.05)', border: '1px solid rgba(19,186,130,0.3)' }}
+                    onClick={() => handleFileClick(file)}
+                  >
+                    {/* Loading overlay with progress and status */}
+                    {downloadingFile === file.id && (
+                      <div className="absolute inset-0 bg-black/80 rounded-xl flex flex-col items-center justify-center z-10 p-4">
+                        <Loader2 className="w-10 h-10 text-green-400 animate-spin mb-3" />
+                        <p className="text-white text-sm font-medium mb-2">
+                          {decryptionStatus[file.id] === 'initializing' && 'Initializing...'}
+                          {decryptionStatus[file.id] === 'fetching-url' && 'Getting download link...'}
+                          {decryptionStatus[file.id] === 'downloading' && `Downloading: ${downloadProgress[file.id] || 0}%`}
+                          {decryptionStatus[file.id] === 'decrypting' && '🔓 Decrypting file...'}
+                          {decryptionStatus[file.id] === 'creating-blob' && 'Preparing file...'}
+                          {decryptionStatus[file.id] === 'opening' && 'Opening file...'}
+                        </p>
+                        {decryptionStatus[file.id] === 'downloading' && downloadProgress[file.id] > 0 && (
+                          <div className="w-full max-w-xs bg-white/10 h-2 rounded-full overflow-hidden mt-2">
+                            <div 
+                              className="h-full bg-gradient-to-r from-green-400 to-emerald-500 transition-all duration-300"
+                              style={{ width: `${downloadProgress[file.id]}%` }}
+                            />
+                          </div>
+                        )}
+                        <p className="text-gray-400 text-xs mt-2">Please wait...</p>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: 'rgba(19,186,130,0.15)' }}>
+                          <Icon className="w-6 h-6" style={{ color }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white font-medium truncate">{displayName}</p>
+                          <p className="text-sm text-gray-400 mt-1">{formatFileSize(file.encryptedSizeMB || 0)}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+                      <div className="flex items-center gap-2">
+                        <Share2 className="w-4 h-4 text-green-400" />
+                        <span className="text-xs text-green-400 font-medium">Shared</span>
+                      </div>
+                      {file.txHash && (
+                        <a
+                          href={`https://sepolia.etherscan.io/tx/${file.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-blue-400 hover:underline"
+                        >
+                          View Tx
+                        </a>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* My Files Section */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-white">My Files</h2>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-white">My Files</h2>
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-white/10 text-gray-300">
+                {ownedFiles.length} {ownedFiles.length === 1 ? 'file' : 'files'}
+              </span>
+            </div>
             <button
               onClick={() => navigate('/upload-file')}
               className="px-4 py-2 rounded-lg font-medium"
@@ -400,7 +492,7 @@ const Dashboard = () => {
                 Retry
               </button>
             </div>
-          ) : files.length === 0 ? (
+          ) : ownedFiles.length === 0 && sharedFiles.length === 0 ? (
             <div className="text-center py-12 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)' }}>
               <FileText className="w-16 h-16 text-gray-600 mx-auto mb-4" />
               <p className="text-gray-400 mb-4">No files uploaded yet</p>
@@ -412,9 +504,13 @@ const Dashboard = () => {
                 Upload Your First File
               </button>
             </div>
+          ) : ownedFiles.length === 0 ? (
+            <div className="text-center py-8 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <p className="text-gray-400">You haven't uploaded any files yet</p>
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {files.map((file) => {
+              {ownedFiles.map((file) => {
                 const { Icon, color } = getFileIcon(file.fileName, file.mimeType);
                 const isPrivate = true; // Default to private, can be enhanced with access control data
                 const displayName = file.fileName?.length > 25 
@@ -497,87 +593,6 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-
-        {/* Shared with me section */}
-        {sharedFiles.length > 0 && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-bold text-white">Shared with me</h2>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sharedFiles.map((file) => {
-                const { Icon, color } = getFileIcon(file.fileName, file.mimeType);
-                const displayName = file.fileName?.length > 25 
-                  ? `${file.fileName.substring(0, 25)}...` 
-                  : file.fileName;
-
-                return (
-                  <motion.div
-                    key={file.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="rounded-xl p-4 cursor-pointer hover:scale-105 transition-transform relative"
-                    style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(19,186,130,0.3)' }}
-                    onClick={() => handleFileClick(file)}
-                  >
-                    {/* Loading overlay with progress and status */}
-                    {downloadingFile === file.id && (
-                      <div className="absolute inset-0 bg-black/80 rounded-xl flex flex-col items-center justify-center z-10 p-4">
-                        <Loader2 className="w-10 h-10 text-green-400 animate-spin mb-3" />
-                        <p className="text-white text-sm font-medium mb-2">
-                          {decryptionStatus[file.id] === 'initializing' && 'Initializing...'}
-                          {decryptionStatus[file.id] === 'fetching-url' && 'Getting download link...'}
-                          {decryptionStatus[file.id] === 'downloading' && `Downloading: ${downloadProgress[file.id] || 0}%`}
-                          {decryptionStatus[file.id] === 'decrypting' && '🔓 Decrypting file...'}
-                          {decryptionStatus[file.id] === 'creating-blob' && 'Preparing file...'}
-                          {decryptionStatus[file.id] === 'opening' && 'Opening file...'}
-                        </p>
-                        {decryptionStatus[file.id] === 'downloading' && downloadProgress[file.id] > 0 && (
-                          <div className="w-full max-w-xs bg-white/10 h-2 rounded-full overflow-hidden mt-2">
-                            <div 
-                              className="h-full bg-gradient-to-r from-green-400 to-emerald-500 transition-all duration-300"
-                              style={{ width: `${downloadProgress[file.id]}%` }}
-                            />
-                          </div>
-                        )}
-                        <p className="text-gray-400 text-xs mt-2">Please wait...</p>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-lg flex items-center justify-center" style={{ background: 'rgba(19,186,130,0.1)' }}>
-                          <Icon className="w-6 h-6" style={{ color }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-white font-medium truncate">{displayName}</p>
-                          <p className="text-sm text-gray-400 mt-1">{formatFileSize(file.encryptedSizeMB || 0)}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-                      <div className="flex items-center gap-2">
-                        <Share2 className="w-4 h-4 text-green-400" />
-                        <span className="text-xs text-green-400">Shared</span>
-                      </div>
-                      {file.txHash && (
-                        <a
-                          href={`https://sepolia.etherscan.io/tx/${file.txHash}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-xs text-blue-400 hover:underline"
-                        >
-                          View Tx
-                        </a>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Middle: Node health + Recent */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
