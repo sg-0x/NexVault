@@ -281,45 +281,86 @@ async function hasFileAccess(fileHash, address) {
 /**
  * Get all file hashes accessible by an address
  * Queries blockchain events to find all files where address has access
+ * Uses chunked queries to avoid block range limits
  * @param {string} address - Ethereum address to check
- * @returns {Promise<string[]>} Array of file hashes (without 0x prefix)
+ * @returns {Promise<string[]>} Array of file hashes (with 0x prefix, lowercase)
  */
 async function getAccessibleFileHashes(address) {
   try {
     const contract = getContract();
+    const provider = getProvider();
     
-    if (!contract) {
-      throw new Error('Contract not initialized. Check blockchain configuration.');
+    if (!contract || !provider) {
+      throw new Error('Contract or provider not initialized. Check blockchain configuration.');
     }
     
     logger.info(`[INFO] Querying accessible files for address: ${address}`);
     
-    // Query AccessGranted events for this address
-    const filter = contract.filters.AccessGranted(null, address);
-    const events = await contract.queryFilter(filter);
+    // Get current block number
+    const latestBlock = await provider.getBlockNumber();
+    logger.debug(`[DEBUG] Latest block: ${latestBlock}`);
     
-    // Also check FileAdded events where address is the owner
-    const ownerFilter = contract.filters.FileAdded(null, address);
-    const ownerEvents = await contract.queryFilter(ownerFilter);
+    // Chunk size for event queries (10,000 blocks to stay under RPC limits)
+    const CHUNK_SIZE = 10000;
+    
+    // Contract deployment block (adjust this to your actual deployment block to save queries)
+    // For now, start from 100 blocks ago or block 9,650,000 (rough estimate for recent Sepolia)
+    const START_BLOCK = Math.max(0, latestBlock - 100000); // Last ~100k blocks (~14 days on Sepolia)
     
     const accessibleHashes = new Set();
     
-    // Add files from AccessGranted events
-    events.forEach((event) => {
-      const fileHash = event.args.fileHash;
-      if (fileHash) {
-        // Remove 0x prefix and convert to lowercase for consistency
-        accessibleHashes.add(fileHash.toLowerCase());
-      }
-    });
+    // Query AccessGranted events in chunks
+    logger.info(`[INFO] Querying AccessGranted events from block ${START_BLOCK} to ${latestBlock}`);
     
-    // Add files from FileAdded events (owner has automatic access)
-    ownerEvents.forEach((event) => {
-      const fileHash = event.args.fileHash;
-      if (fileHash) {
-        accessibleHashes.add(fileHash.toLowerCase());
+    for (let fromBlock = START_BLOCK; fromBlock <= latestBlock; fromBlock += CHUNK_SIZE) {
+      const toBlock = Math.min(fromBlock + CHUNK_SIZE - 1, latestBlock);
+      
+      try {
+        // Query AccessGranted events for this address in this block range
+        const filter = contract.filters.AccessGranted(null, address);
+        const events = await contract.queryFilter(filter, fromBlock, toBlock);
+        
+        events.forEach((event) => {
+          const fileHash = event.args.fileHash;
+          if (fileHash) {
+            // Keep 0x prefix and convert to lowercase
+            accessibleHashes.add(fileHash.toLowerCase());
+            logger.debug(`[DEBUG] Found AccessGranted: ${fileHash.substring(0, 10)}... at block ${event.blockNumber}`);
+          }
+        });
+        
+        logger.debug(`[DEBUG] Scanned blocks ${fromBlock}-${toBlock}, found ${events.length} events`);
+      } catch (err) {
+        logger.warn(`[WARN] Failed to query blocks ${fromBlock}-${toBlock}: ${err.message}`);
+        // Continue to next chunk even if this one fails
       }
-    });
+    }
+    
+    // Also query FileAdded events where address is the owner (they have automatic access)
+    logger.info(`[INFO] Querying FileAdded events (owner) from block ${START_BLOCK} to ${latestBlock}`);
+    
+    for (let fromBlock = START_BLOCK; fromBlock <= latestBlock; fromBlock += CHUNK_SIZE) {
+      const toBlock = Math.min(fromBlock + CHUNK_SIZE - 1, latestBlock);
+      
+      try {
+        const ownerFilter = contract.filters.FileAdded(null, address);
+        const ownerEvents = await contract.queryFilter(ownerFilter, fromBlock, toBlock);
+        
+        ownerEvents.forEach((event) => {
+          const fileHash = event.args.fileHash;
+          if (fileHash) {
+            accessibleHashes.add(fileHash.toLowerCase());
+            logger.debug(`[DEBUG] Found FileAdded (owner): ${fileHash.substring(0, 10)}... at block ${event.blockNumber}`);
+          }
+        });
+        
+        logger.debug(`[DEBUG] Scanned blocks ${fromBlock}-${toBlock}, found ${ownerEvents.length} owner events`);
+      } catch (err) {
+        logger.warn(`[WARN] Failed to query owner events for blocks ${fromBlock}-${toBlock}: ${err.message}`);
+      }
+    }
+    
+    logger.info(`[INFO] Found ${accessibleHashes.size} unique file hashes before verification`);
     
     // Verify each file still has access (in case access was revoked)
     // Use Promise.all for parallel verification instead of sequential
@@ -328,8 +369,9 @@ async function getAccessibleFileHashes(address) {
         const hasAccess = await hasFileAccess(hash, address);
         return hasAccess ? hash : null;
       } catch (err) {
-        logger.warn(`[WARN] Failed to verify access for hash ${hash.substring(0, 10)}: ${err.message}`);
-        return null;
+        logger.warn(`[WARN] Failed to verify access for hash ${hash.substring(0, 10)}...: ${err.message}`);
+        // Keep the hash even if verification fails (assume access is valid)
+        return hash;
       }
     });
     

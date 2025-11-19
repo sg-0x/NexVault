@@ -19,7 +19,6 @@ const NEXVAULT_ABI = [
 // Multiple RPC endpoints for Sepolia (fallback providers to avoid rate limits)
 const SEPOLIA_RPC_ENDPOINTS = [
   INFURA_URL, // Primary: User's Infura endpoint
-  'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161', // Backup Infura (public)
   'https://rpc.sepolia.org', // Public Sepolia RPC
   'https://rpc2.sepolia.org', // Another public Sepolia RPC
   'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode
@@ -33,20 +32,33 @@ let contract;
 let currentRpcIndex = 0;
 
 /**
- * Create a FallbackProvider with multiple RPC endpoints
- * This prevents rate limiting issues by using multiple providers
+ * Create provider with current RPC endpoint
+ * Simpler than FallbackProvider which has network detection issues
  */
-function createFallbackProvider() {
-  const providers = SEPOLIA_RPC_ENDPOINTS.map((url, index) => ({
-    provider: new ethers.JsonRpcProvider(url),
-    priority: index + 1, // Lower priority = preferred
-    stallTimeout: 2000, // Wait 2 seconds before trying next provider
-    weight: 1,
-  }));
-
-  return new ethers.FallbackProvider(providers, null, {
-    cacheTimeout: -1, // Disable caching to get real-time data
+function createProvider() {
+  const rpcUrl = SEPOLIA_RPC_ENDPOINTS[currentRpcIndex % SEPOLIA_RPC_ENDPOINTS.length];
+  console.log(`📡 Using RPC endpoint ${currentRpcIndex + 1}/${SEPOLIA_RPC_ENDPOINTS.length}: ${rpcUrl}`);
+  
+  // Create a simple JsonRpcProvider with explicit network config
+  return new ethers.JsonRpcProvider(rpcUrl, {
+    chainId: 11155111, // Sepolia chain ID
+    name: 'sepolia',
+  }, {
+    staticNetwork: true, // Skip network detection (faster startup)
   });
+}
+
+/**
+ * Rotate to next RPC endpoint
+ */
+function rotateRpcEndpoint() {
+  currentRpcIndex = (currentRpcIndex + 1) % SEPOLIA_RPC_ENDPOINTS.length;
+  console.log(`🔄 Rotating to RPC endpoint ${currentRpcIndex + 1}/${SEPOLIA_RPC_ENDPOINTS.length}`);
+  
+  // Recreate provider and contract with new RPC
+  provider = createProvider();
+  signer = new ethers.Wallet(PRIVATE_KEY, provider);
+  contract = new ethers.Contract(CONTRACT_ADDRESS, NEXVAULT_ABI, signer);
 }
 
 /**
@@ -55,7 +67,7 @@ function createFallbackProvider() {
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Retry transaction with exponential backoff
+ * Retry transaction with exponential backoff and RPC rotation
  * @param {Function} fn - Async function to retry
  * @param {number} maxRetries - Maximum number of retry attempts
  * @param {number} baseDelay - Base delay in milliseconds (doubles each retry)
@@ -68,19 +80,22 @@ async function retryWithBackoff(fn, maxRetries = 5, baseDelay = 1000) {
       const isRateLimitError = 
         error.message?.includes('Too Many Requests') ||
         error.message?.includes('429') ||
+        error.message?.includes('exceed maximum block range') ||
+        error.message?.includes('limited to') ||
         error.code === -32005 ||
+        error.code === -32701 ||
+        error.code === -32602 ||
         error.code === 'BAD_DATA';
 
       const isLastAttempt = attempt === maxRetries;
 
       if (isRateLimitError && !isLastAttempt) {
         const delay = baseDelay * Math.pow(2, attempt - 1); // Exponential backoff
-        console.warn(`⏳ Rate limit hit (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+        console.warn(`⏳ Rate limit/block range error (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
         await sleep(delay);
         
-        // Try next RPC endpoint
-        currentRpcIndex = (currentRpcIndex + 1) % SEPOLIA_RPC_ENDPOINTS.length;
-        console.log(`🔄 Switching to RPC endpoint ${currentRpcIndex + 1}/${SEPOLIA_RPC_ENDPOINTS.length}`);
+        // Rotate to next RPC endpoint
+        rotateRpcEndpoint();
         
         continue;
       }
@@ -92,7 +107,7 @@ async function retryWithBackoff(fn, maxRetries = 5, baseDelay = 1000) {
 }
 
 /**
- * Initialize blockchain connection with fallback providers
+ * Initialize blockchain connection with simple provider rotation
  * This will be called when the application starts
  */
 function initializeBlockchain() {
@@ -113,8 +128,8 @@ function initializeBlockchain() {
       return;
     }
 
-    // Create fallback provider with multiple RPC endpoints
-    provider = createFallbackProvider();
+    // Create simple provider (no FallbackProvider to avoid network detection issues)
+    provider = createProvider();
 
     // Create wallet/signer from private key
     signer = new ethers.Wallet(PRIVATE_KEY, provider);
@@ -122,7 +137,7 @@ function initializeBlockchain() {
     // Initialize contract instance with ABI
     contract = new ethers.Contract(CONTRACT_ADDRESS, NEXVAULT_ABI, signer);
 
-    console.log('✅ Blockchain provider initialized with FallbackProvider');
+    console.log('✅ Blockchain provider initialized');
     console.log(`📡 Available RPC endpoints: ${SEPOLIA_RPC_ENDPOINTS.length}`);
     console.log(`📄 Contract address: ${CONTRACT_ADDRESS}`);
     console.log(`👤 Signer address: ${signer.address}`);
@@ -137,4 +152,5 @@ module.exports = {
   getSigner: () => signer,
   getContract: () => contract,
   retryWithBackoff, // Export retry utility for use in controllers
+  rotateRpcEndpoint, // Export RPC rotation function
 };
