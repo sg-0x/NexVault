@@ -20,9 +20,9 @@ const NEXVAULT_ABI = [
 const SEPOLIA_RPC_ENDPOINTS = [
   INFURA_URL, // Primary: User's Infura endpoint
   'https://rpc.sepolia.org', // Public Sepolia RPC
-  'https://rpc2.sepolia.org', // Another public Sepolia RPC
-  'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode
+  'https://ethereum-sepolia-rpc.publicnode.com', // PublicNode - more reliable
   'https://1rpc.io/sepolia', // 1RPC
+  'https://ethereum-sepolia.blockpi.network/v1/rpc/public', // BlockPI
 ].filter(Boolean); // Remove undefined/null values
 
 // Initialize Ethereum provider (Infura/Alchemy)

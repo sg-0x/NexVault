@@ -325,8 +325,12 @@ async function getAccessibleFileHashes(address) {
     
     logger.info(`[INFO] Querying accessible files for address: ${address}`);
     
-    // Get current block number
-    const latestBlock = await provider.getBlockNumber();
+    // Get current block number with timeout
+    const latestBlock = await Promise.race([
+      provider.getBlockNumber(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('getBlockNumber timeout')), 5000))
+    ]);
+    
     logger.debug(`[DEBUG] Latest block: ${latestBlock}`);
     
     // Chunk size for event queries (use larger chunks to reduce queries)
@@ -340,68 +344,70 @@ async function getAccessibleFileHashes(address) {
     
     const accessibleHashes = new Set();
     let totalEvents = 0;
+    let retryCount = 0;
+    const MAX_RETRIES = 3;
     
     // Query both AccessGranted and FileAdded events in parallel for each chunk
     for (let fromBlock = START_BLOCK; fromBlock <= latestBlock; fromBlock += CHUNK_SIZE) {
       const toBlock = Math.min(fromBlock + CHUNK_SIZE - 1, latestBlock);
+      let chunkSuccess = false;
       
-      try {
-        // Query BOTH event types in parallel (faster than sequential)
-        const [accessEvents, ownerEvents] = await Promise.all([
-          contract.queryFilter(contract.filters.AccessGranted(null, address), fromBlock, toBlock),
-          contract.queryFilter(contract.filters.FileAdded(null, address), fromBlock, toBlock),
-        ]);
-        
-        // Process AccessGranted events
-        accessEvents.forEach((event) => {
-          const fileHash = event.args.fileHash;
-          if (fileHash) {
-            accessibleHashes.add(fileHash.toLowerCase());
-          }
-        });
-        
-        // Process FileAdded events (owner has automatic access)
-        ownerEvents.forEach((event) => {
-          const fileHash = event.args.fileHash;
-          if (fileHash) {
-            accessibleHashes.add(fileHash.toLowerCase());
-          }
-        });
-        
-        totalEvents += accessEvents.length + ownerEvents.length;
-        logger.debug(`[DEBUG] Blocks ${fromBlock}-${toBlock}: ${accessEvents.length} access grants, ${ownerEvents.length} owned files`);
-      } catch (err) {
-        // If chunk fails, try rotating RPC and retry once
-        logger.warn(`[WARN] Failed to query blocks ${fromBlock}-${toBlock}: ${err.message}, rotating RPC...`);
-        
-        const { rotateRpcEndpoint } = require('../config/blockchain');
-        rotateRpcEndpoint();
-        
-        // Retry this chunk once with new RPC
+      // Try up to MAX_RETRIES times with different RPCs
+      while (!chunkSuccess && retryCount < MAX_RETRIES) {
         try {
-          const retryContract = getContract();
-          const [accessEvents, ownerEvents] = await Promise.all([
-            retryContract.queryFilter(retryContract.filters.AccessGranted(null, address), fromBlock, toBlock),
-            retryContract.queryFilter(retryContract.filters.FileAdded(null, address), fromBlock, toBlock),
+          // Add 10-second timeout to prevent hanging
+          const queryPromise = Promise.all([
+            contract.queryFilter(contract.filters.AccessGranted(null, address), fromBlock, toBlock),
+            contract.queryFilter(contract.filters.FileAdded(null, address), fromBlock, toBlock),
           ]);
           
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Query timeout')), 10000)
+          );
+          
+          const [accessEvents, ownerEvents] = await Promise.race([queryPromise, timeoutPromise]);
+          
+          // Process AccessGranted events
           accessEvents.forEach((event) => {
             const fileHash = event.args.fileHash;
-            if (fileHash) accessibleHashes.add(fileHash.toLowerCase());
+            if (fileHash) {
+              accessibleHashes.add(fileHash.toLowerCase());
+            }
           });
           
+          // Process FileAdded events (owner has automatic access)
           ownerEvents.forEach((event) => {
             const fileHash = event.args.fileHash;
-            if (fileHash) accessibleHashes.add(fileHash.toLowerCase());
+            if (fileHash) {
+              accessibleHashes.add(fileHash.toLowerCase());
+            }
           });
           
           totalEvents += accessEvents.length + ownerEvents.length;
-          logger.info(`[SUCCESS] Retry successful for blocks ${fromBlock}-${toBlock}`);
-        } catch (retryErr) {
-          logger.error(`[ERROR] Retry failed for blocks ${fromBlock}-${toBlock}: ${retryErr.message}`);
-          // Continue to next chunk even if retry fails
+          logger.debug(`[DEBUG] Blocks ${fromBlock}-${toBlock}: ${accessEvents.length} access grants, ${ownerEvents.length} owned files`);
+          
+          chunkSuccess = true; // Success, exit retry loop
+        } catch (err) {
+          retryCount++;
+          
+          // Rotate RPC on any error
+          logger.warn(`[WARN] Query failed (attempt ${retryCount}/${MAX_RETRIES}): ${err.message}`);
+          
+          const { rotateRpcEndpoint } = require('../config/blockchain');
+          rotateRpcEndpoint();
+          
+          // Wait a bit before retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          if (retryCount >= MAX_RETRIES) {
+            logger.error(`[ERROR] Failed blocks ${fromBlock}-${toBlock} after ${MAX_RETRIES} attempts, skipping...`);
+            break; // Skip this chunk and continue
+          }
         }
       }
+      
+      // Reset retry counter for next chunk
+      retryCount = 0;
     }
     
     logger.info(`[INFO] Found ${accessibleHashes.size} unique file hashes from ${totalEvents} events`);
@@ -421,7 +427,10 @@ async function getAccessibleFileHashes(address) {
     return verifiedHashes;
   } catch (error) {
     logger.error(`[ERROR] getAccessibleFileHashes failed: ${error.message}`);
-    throw new Error(`Failed to get accessible file hashes: ${error.message}`);
+    
+    // Return empty array instead of throwing to prevent complete failure
+    logger.warn(`[WARN] Returning empty array due to blockchain query failure`);
+    return [];
   }
 }
 
